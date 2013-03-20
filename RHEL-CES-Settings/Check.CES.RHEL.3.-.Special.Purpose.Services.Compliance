@@ -1,0 +1,91 @@
+#!/bin/bash
+# CES RHEL 2.0
+# 3. - Check and remove Special Purpose Services on CentOS 6
+
+function remove_if_installed
+# arg1 = packet to remove
+# arg2 = CES Document chapter
+# arg3 = Chapter title
+{
+STATUS=$( yum -q list installed $1 2> /dev/null | awk '{print $3}' )
+if [ -n "$STATUS" ]
+then
+        echo -n "CES $2 Warning - $3: Package $1 is installed. Erasing.."
+        # yum erase $1
+        echo "."
+else
+        echo "CES $2 OK - $3: Package $1 is NOT installed"
+fi
+}
+
+
+
+# 3.1 Set Daemon umask
+# Description: Set the default umask for all processes started at boot time. The settings in umask
+# selectively turn off default permission when a file is created by a daemon process.
+grep umask /etc/sysconfig/init > /dev/null ||\
+echo 'umask 027' >> /etc/sysconfig/init
+grep umask /etc/sysconfig/init  > /dev/null &&\
+echo "CES 3.1 OK - Set Umask 027 to Daemons in /etc/sysconfig/init"
+
+# 3.2 Remove X Windows
+# Description:
+# The X Windows system provides a Graphical User Interface (GUI) where users can have
+# multiple windows in which to run programs and various add on. The X Windows system is
+# typically used on desktops where users login, but not on servers where users typically do
+# not login.
+INITLVL=$(egrep '(:[1-9]:)' /etc/inittab |awk -F: '{print $2}')
+if [[ $INITLVL != 3 ]]
+then
+	echo "CES 3.2 Warning - runlevel should (probably) be set to 3 - NOT FIXING. Fix with command sed -i 's/^id:[1-9]:initdefault:/id:3:initdefault/g' /etc/inittab for example"
+fi
+if [[ $INITLVL == 3 ]]
+then
+	echo "CES 3.2 OK - Default runlevel should is set to 3"
+fi
+
+# 3.7 Remove LDAP
+# Description:
+# The Lightweight Directory Access Protocol (LDAP) was introduced as a replacement for
+# NIS/YP. It is a service that provides a method for looking up information from a central
+# database. The default client/server LDAP application for Red Hat is OpenLDAP
+remove_if_installed openldap-servers 3.7 "Remove LDAP"
+
+# 3.8 Disable NFS and RPC
+SERVICES="nfslock rpcgssd rpcidmapd portmap"
+echo "CES 3.8 OK - Disabling $SERVICES"
+for service in $SERVICES
+do
+	chkconfig $service off
+done
+
+# 3.9 Remove DNS Server
+remove_if_installed 3.9 "Remove DNS Server"
+
+# 3.10 Remove FTP Server
+remove_if_installed 3.10 "Remove FTP Server"
+
+# 3.11 Remove FTP Server
+remove_if_installed 3.11 "Remove HTTP Server"
+
+# 3.12 Remove Dovecot (IMAP and POP3 services)
+remove_if_installed 3.12 "Remove Dovecot"
+
+# 3.13 Remove Samba
+remove_if_installed 3.13 "Remove Samba"
+
+# 3.14 Remove HTTP Proxy Server
+remove_if_installed 3.14 "Remvoe HTTP Proxy Server"
+
+# 3.15 Remove SNMP Server
+remove_if_installed 3.15 "Remove SNMP Server"
+
+# 3.16 Check for services listening on port 25
+MAIL=$(netstat -an | grep LIST | grep 25)
+
+if [ -n "$MAIL" ]
+then
+	echo "CES 3.16 OK - No service is listening on port 25"
+else
+	echo "CES 3.16 Warning - We have a service listening on port 25: $MAIL"
+fi

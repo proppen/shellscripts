@@ -1,0 +1,43 @@
+#!/bin/bash
+# CES RHEL 2.0
+# 2.1 - Check and remove Legacy Services on CentOS 6
+
+DAEMONS="telnet-server rsh-server ypserv talk-server xinetd"
+CLIENTS="rsh ypbind tftp tftp-server talk"
+
+function remove_pkg
+{
+	# Don't run on empty argument
+	if [ -z "$1" ]
+		then
+			echo "ERROR function remove_pkg ran without argument"
+			return 9
+		fi
+	# This works on RHEL/yum systems
+	echo -n "CES 2.0 - Remove package"
+	yum --quiet erase $1 2> /dev/null
+	echo " $1"
+}
+
+function disable_service
+{
+	# Don't run on empty argument
+	if [ -z "$1" ]
+		then
+			return 9
+		fi
+	echo -n "CES 2.0 - Disable OS Service"
+	chkconfig $1 off 2> /dev/null
+	echo " $1"
+}
+
+for service in $DAEMONS
+do
+	disable_service $service
+done
+
+
+for package in $DAEMONS $CLIENTS
+do
+	remove_pkg $package
+done
