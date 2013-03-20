@@ -1,0 +1,85 @@
+#!/bin/bash
+# This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+# 
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+# 
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ----------------------------------------------------------------------------
+# 
+# Written by Tom Molin <tom.molin@gmail.com> to count the number of half-open SYN connections.
+# Lessons learnt from Anonymous big SYN Flood attack 2012-09-03
+
+
+# Exit levels:
+OK=0
+WARN=1
+ERROR=2 
+UNKNOWN=3
+
+function usage
+{
+        echo "Usage: Count number of half open tcp connections with netstat.
+ -w --warnlevel NUM
+ -c --criticallevel NUM
+ -L LABEL"
+}
+
+
+# Parse input parameters
+until [ -z "$1" ]; do
+
+  case "$1" in
+    -w|--warnlevel)
+                WARNLEVEL="$2"
+                shift
+                ;;
+    -c|--criticallevel)
+                CRITLEVEL="$2"
+                shift
+                ;;
+    -L)
+                LBL="$2"
+                shift
+                ;;
+    *)
+                usage
+                exit 1
+                ;;
+  esac
+  shift
+done
+
+if [[ -z "$WARNLEVEL" ]] || [[ -z "$CRITLEVEL" ]] || [[ -z "$LBL" ]]
+ then
+        echo "Missing argument"
+        usage
+        exit 1
+ fi
+
+
+STATUS=$(/bin/netstat -n -p TCP tcp | grep SYN_R | wc -l)
+LABEL="| ${LBL}=${STATUS};$WARNLEVEL;$CRITLEVEL;0;"
+
+
+if [ "$STATUS" -lt "$WARNLEVEL" ];then
+        echo "OK - $STATUS $LABEL"
+        exit $OK
+fi
+if [ "$STATUS" -ge "$WARNLEVEL" -a "$STATUS" -lt "$CRITLEVEL" ];then
+        echo "WARNING - $STATUS $LABEL"
+        exit $WARN
+fi
+if [ "$STATUS" -ge "$CRITLEVEL" ];then
+        echo "CRITICAL - $STATUS $LABEL"
+        exit $ERROR
+fi
+
+echo "UNKNOWN ERROR status ($STATUS)!"
+exit $UNKNOWN
