@@ -1,0 +1,157 @@
+#!/bin/bash
+# This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+# 
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+# 
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ----------------------------------------------------------------------------
+# 
+# Written by Tom (Molin) Eklöf <tom.molin@gmail.com> 
+# Monitor if the NetApp Aggregate Total storage space falls below a threshold.
+# You need to set up SSH Key authentication for the monitoring user (https://communities.netapp.com/thread/19906).
+# ----------------------------------------------------------------------------
+#   Instructions/Documentation: you need ssh keyless authentication for this plugin.
+#   You can use root but you can also create a monitoring role.
+# ----------------------------------------------------------------------------
+#
+### Add keyless SSH Authentication & monitoring role (we're using a user named op5 in this example):
+
+## Create op5 user and monitoring role
+# useradmin role add monitoring -a cli-aggr*,login-ssh
+# useradmin group add monitoring -r monitoring
+# useradmin user modify op5 -g monitoring
+
+## Enter advanced mode
+# priv set advanced
+
+## Unlock diaguser and set password
+# useradmin diaguser unlock
+# useradmin diaguser password
+
+## Login with the diag user and password you just set:
+# systemshell
+
+## Now add your SSH public key 
+# mkdir -p /mroot/etc/sshd/op5/.ssh
+# vi /mroot/etc/sshd/op5/.ssh/authorized_keys
+# sudo chown -R root:wheel /mroot/etc/sshd/op5/.ssh/authorized_keys
+# sudo chmod -R 0600 /mroot/etc/sshd/op5
+# exit
+# useradmin diaguser lock
+# priv set admin
+# ----------------------------------------------------------------------------
+
+
+
+# Exit levels:
+OK=0
+WARN=1
+ERROR=2 
+UNKNOWN=3
+
+function usage
+{
+        echo "Usage: Warn if there isn't enough aggregate space left on NetApp
+* -H --host <host>
+* -U --user <username>
+  -A <AggregateName>
+*  -S Space Unit <GB|MB|KB>
+* -w --warnlevel NUM
+* -c --criticallevel NUM
+* -L LABEL
+
+*Oblicatory option"
+}
+
+
+# Parse input parameters
+until [ -z "$1" ]; do
+
+  case "$1" in
+    -A)
+		AGGR="$2"
+		shift
+		;;
+    -w|--warnlevel)
+                WARNLEVEL="$2"
+                shift
+                ;;
+    -c|--criticallevel)
+                CRITLEVEL="$2"
+                shift
+                ;;
+    -H|--host)
+		HST="$2"
+		shift
+		;;
+    -S)
+		UNIT="$2"
+		shift
+		case "$UNIT" in
+			MB)
+				UOPT="m"
+				;;
+			GB)
+				UOPT="g"
+				;;
+			KB)
+				UOPT="k"
+				;;
+		esac
+		;;
+    -U|--user)
+		USR="$2"
+		shift
+		;;
+    -L)
+                LBL="$2"
+                shift
+                ;;
+    *)
+                usage
+                exit 1
+                ;;
+  esac
+  shift
+done
+
+if [[ -z "$WARNLEVEL" ]] || [[ -z "$CRITLEVEL" ]] || [[ -z "$UNIT" ]] || [[ -z "$LBL" ]] || [[ -z "$HST" ]] || [[ -z "$USR" ]] || [[ -z "$UOPT" ]]
+ then
+        echo "Missing argument"
+        usage
+        exit 1
+ fi
+
+
+# How much space do we have left in aggregate?
+STATUS=$(/usr/bin/ssh $USR@$HST "aggr show_space -$UOPT $AGGR" | awk '/^Total space/ {print $5}'|sed "s/$UNIT\$//g")
+if  [[ $(echo -e "$STATUS"|wc -l) -gt 1 ]];then
+	echo "You have more than 1 aggregate, name which one to monitor with -A"
+	exit 1
+fi
+
+LABEL="| ${LBL}=${STATUS}${UNIT};$WARNLEVEL;$CRITLEVEL;0;"
+
+if [[ $STATUS -gt $WARNLEVEL ]];then
+        echo "OK - $STATUS $LABEL"
+        exit $OK
+fi
+if [[ $STATUS -le $WARNLEVEL && $STATUS -ge $CRITLEVEL ]];then
+
+        echo "WARNING - $STATUS $LABEL"
+        exit $WARN
+fi
+if [[ $STATUS -le $CRITLEVEL ]];then
+        echo "CRITICAL - $STATUS $LABEL"
+        exit $ERROR
+fi
+
+echo "UNKNOWN ERROR: .$STATUS."
+exit $UNKNOWN
