@@ -1,0 +1,74 @@
+#!/usr/bin/env perl
+# This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+# 
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+# 
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ----------------------------------------------------------------------------
+# 
+# Written by Tom (Molin) Eklöf <tom.molin@mogul.com> 
+
+
+use strict;
+use Getopt::Long;
+use Time::HiRes qw(time);	# Use high resolution timing
+
+my $FILE; my $WARN;my $CRIT;my $LBL;
+GetOptions	(
+	"file=s"	=> \$FILE,
+	"warn=s"	=> \$WARN,
+	"crit=s"	=> \$CRIT,
+	"label=s"	=> \$LBL
+		);
+
+my $count = 300;
+my $str = "0123456789ABCDEF" x 1024 . "\n";
+my $bytes_in_mb = 1024*1024;
+
+#print "Start\n";
+test_drive($FILE, $count);
+
+#print "Finished\n";
+exit(0);
+
+# ---------------------------------------------
+sub test_drive {
+  my $drive = shift;
+  my $count = shift;
+  my $myfile = $FILE;
+  unlink $myfile if -e $myfile;
+  open (OUT, ">$myfile")
+	or do {
+		print "CRITICAL - CannotWriteToFile | $LBL=$CRIT;$WARN;$CRIT;0;\n";
+		exit 2;
+	};
+  my $t0 = time();
+  my $ii=0;
+  for $ii (1..$count) {
+    print OUT $str;
+  }
+  my $t1 = time();
+  close(OUT);
+  my $deltaT = $t1-$t0;
+  unlink $myfile if -e $myfile;
+  if ( $WARN > $deltaT ) {
+    print "OK - $deltaT | $LBL=$deltaT;$WARN;$CRIT;0;\n";
+    exit 0;
+  }
+  if ( $deltaT >= $CRIT ) {
+    print "CRITICAL - $deltaT | $LBL=$deltaT;$WARN;$CRIT;0;\n";
+    exit 2;
+  }
+  if ( $deltaT >= $WARN ) {
+    print "WARNING - $deltaT | $LBL=$deltaT;$WARN;$CRIT;0;\n";
+    exit 1;
+  }
+  exit 3;
+}
